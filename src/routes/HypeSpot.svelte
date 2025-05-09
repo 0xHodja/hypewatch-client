@@ -1,0 +1,474 @@
+<script lang="ts">
+  import { onMount, onDestroy } from "svelte";
+  import { createChart } from "lightweight-charts";
+  import DoubleRangeSlider from "./DoubleRangeSlider.svelte";
+
+  let ws: WebSocket;
+
+  let trades: any[] = $state([]);
+  let tradesHistorical: any[] = $state([]);
+  let tradesWebsocket: any[] = $state([]);
+  let tradesInitialised: boolean = $state(false);
+
+  let tradeCVDInitialised: boolean = $state(false);
+  let tradeCVD: any[] = $state([]);
+
+  let candles: any[] = $state([]);
+
+  let dataStartTime: number = $state(0);
+  let dataEndTime: number = $state(0);
+  let sliderStartTime: number = $state(0.8);
+  let sliderEndTime: number = $state(1);
+  let selectedStartTime: number = $derived((dataEndTime - dataStartTime) * sliderStartTime + dataStartTime);
+  let selectedEndTime: number = $derived((dataEndTime - dataStartTime) * sliderEndTime + dataStartTime);
+  let sliderStartTimeFormatted: string = $derived(new Date(selectedStartTime).toLocaleString("en-US", { timeZone: "UTC" }));
+  let sliderEndTimeFormatted: string = $derived(new Date(selectedEndTime).toLocaleString("en-US", { timeZone: "UTC" }));
+
+  let candleChartContainer: HTMLDivElement;
+  let priceChart: any;
+  let candleSeries: any;
+  let cvdSeries: any;
+
+  let userInfo: Record<string, any> = $state({});
+
+  let isLoading: boolean = $state(true);
+
+  let userTradeSummary = $derived(
+    trades.reduce((acc: Record<string, any>, trade) => {
+      if (trade.time < selectedStartTime || trade.time > selectedEndTime) {
+        return acc;
+      }
+
+      const [buyer, seller] = trade.users;
+
+      if (!acc[buyer]) {
+        acc[buyer] = { buys: 0, sells: 0, takerVolume: 0, makerVolume: 0, netVolume: 0 };
+      }
+
+      if (!acc[seller]) {
+        acc[seller] = { buys: 0, sells: 0, takerVolume: 0, makerVolume: 0, netVolume: 0 };
+      }
+
+      if (trade.side == "B") {
+        acc[buyer].buys += 1;
+        acc[buyer].takerVolume += Number(trade.sz);
+        acc[seller].makerVolume -= Number(trade.sz);
+        acc[buyer].netVolume += Number(trade.sz);
+        acc[seller].netVolume -= Number(trade.sz);
+      } else {
+        acc[seller].sells += 1;
+        acc[seller].takerVolume -= Number(trade.sz);
+        acc[buyer].makerVolume += Number(trade.sz);
+        acc[seller].netVolume -= Number(trade.sz);
+        acc[buyer].netVolume += Number(trade.sz);
+      }
+
+      return acc;
+    }, {})
+  );
+
+  let aggressiveBuyers = $derived(
+    Object.entries(userTradeSummary)
+      .filter(([_, user]) => user.netVolume > 0)
+      .sort((a, b) => b[1].netVolume - a[1].netVolume)
+      .slice(0, 10)
+  );
+
+  let aggressiveSellers = $derived(
+    Object.entries(userTradeSummary)
+      .filter(([_, user]) => user.netVolume < 0)
+      .sort((a, b) => a[1].netVolume - b[1].netVolume)
+      .slice(0, 10)
+  );
+
+  const shortenHash = (hash: string, length: number = 3) => {
+    return hash.slice(0, 3) + "..." + hash.slice(-3);
+  };
+
+  const hypurrscan_url = (hash: string) => {
+    return `https://hypurrscan.io/address/${hash}`;
+  };
+
+  const hyperdash_url = (hash: string) => {
+    return `https://hyperdash.info/trader/${hash}`;
+  };
+
+  const formatNumber = (number: number) => {
+    try {
+      return number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    } catch (error) {
+      return number;
+    }
+  };
+
+  const updateTakerUserBalances = async () => {
+    [...aggressiveBuyers, ...aggressiveSellers].forEach(async (user) => {
+      const balances = await getUserBalances(user[0]);
+      userInfo[user[0]] = {
+        USDC: Math.floor(balances.find((item: any) => item.coin === "USDC")?.total ?? 0),
+        HYPE: Math.floor(balances.find((item: any) => item.coin === "HYPE")?.total ?? 0),
+      };
+    });
+  };
+
+  const updateSingleTakerUserBalance = async (user: string) => {
+    const balances = await getUserBalances(user);
+    userInfo[user] = {
+      USDC: Math.floor(balances.find((item: any) => item.coin === "USDC")?.total ?? 0),
+      HYPE: Math.floor(balances.find((item: any) => item.coin === "HYPE")?.total ?? 0),
+    };
+  };
+
+  const getUserBalances = async (user: string) => {
+    const response = await fetch(`https://api.hyperliquid.xyz/info`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type: "spotClearinghouseState",
+        user: user,
+      }),
+    });
+    const data = await response.json();
+    const balance = data.balances;
+    return balance;
+  };
+
+  onMount(() => {
+    ws = new WebSocket("wss://api.hyperliquid.xyz/ws");
+
+    ws.onopen = () => {
+      ws.send(
+        JSON.stringify({
+          method: "subscribe",
+          subscription: {
+            type: "trades",
+            coin: "@107",
+          },
+        })
+      );
+
+      ws.send(
+        JSON.stringify({
+          method: "subscribe",
+          subscription: {
+            type: "candle",
+            coin: "@107",
+            interval: "1m",
+          },
+        })
+      );
+
+      fetch("https://api.hyperliquid.xyz/info", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "candleSnapshot",
+          req: {
+            coin: "@107",
+            interval: "1m",
+            startTime: Date.now() - 5000 * 60 * 1000,
+            endTime: Date.now(),
+          },
+        }),
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          candles = data.sort((a: any, b: any) => b.t - a.t);
+        })
+        .catch((error) => {
+          console.error("Error fetching candle snapshot:", error);
+        });
+
+      fetch("http://167.99.74.137:5000/api/trades", {
+        headers: {
+          Accept: "application/json",
+        },
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          tradesHistorical = data.trades.map((trade: any) => ({
+            coin: trade.coin,
+            side: trade.side,
+            px: Number(trade.px),
+            sz: Number(trade.sz),
+            time: trade.time,
+            timeRounded: Math.floor(trade.time / 60000) * 60000,
+            hash: trade.hash,
+            tid: trade.tid,
+            users: [trade.user_buyer, trade.user_seller],
+          }));
+        });
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.channel === "trades") {
+        const newTrades = data.data.map((trade: any) => ({
+          ...trade,
+          time: trade.time,
+          timeRounded: Math.floor(trade.time / 60000) * 60000,
+        }));
+
+        // before trades initialised, log them
+        if (!tradesInitialised && (tradesHistorical.length == 0 || tradesWebsocket.length == 0)) {
+          tradesWebsocket = [...newTrades, ...tradesWebsocket];
+        } else if (!tradesInitialised && tradesHistorical.length > 0 && tradesWebsocket.length > 0) {
+          const filteredNewTrades = tradesHistorical.filter((trade: any) => !tradesWebsocket.some((histTrade: any) => histTrade.tid === trade.tid));
+          trades = [...newTrades, ...filteredNewTrades, ...tradesWebsocket];
+          trades.sort((a: any, b: any) => a.time - b.time);
+          dataStartTime = Math.min(...trades.map((t: any) => t.time));
+          dataEndTime = Math.max(...trades.map((t: any) => t.time));
+          tradesInitialised = true; // at this point the trade table is initialised
+          isLoading = false;
+          // update aggressive buyers and sellers
+          updateTakerUserBalances();
+        } else if (tradesInitialised) {
+          trades = [...newTrades, ...trades];
+          dataEndTime = Math.max(...trades.map((t: any) => t.time));
+
+          const aggressiveUsers = [...aggressiveBuyers, ...aggressiveSellers];
+          trades.forEach((trade: any) => {
+            if (trade.users[0] in aggressiveUsers) {
+              updateSingleTakerUserBalance(trade.users[0]);
+            } else if (trade.users[1] in aggressiveUsers) {
+              updateSingleTakerUserBalance(trade.users[1]);
+            }
+          });
+        }
+
+        if (!tradeCVDInitialised && tradesInitialised) {
+          tradeCVD = [...trades];
+          tradeCVD = tradeCVD
+            .sort((a: any, b: any) => a.timeRounded - b.timeRounded) // ascending order (oldest to newest)
+            .reduce((acc: { timeRounded: number; cumulativeVolume: number }[], trade) => {
+              const lastEntry = acc[acc.length - 1];
+              const lastVolume = acc.length > 0 ? lastEntry.cumulativeVolume : 0;
+              const volumeDelta = trade.side === "B" ? Number(trade.sz) : -Number(trade.sz);
+              if (acc.length > 0 && lastEntry.timeRounded === trade.timeRounded) {
+                lastEntry.cumulativeVolume += volumeDelta;
+                return acc;
+              } else {
+                return [...acc, { timeRounded: trade.timeRounded, cumulativeVolume: lastVolume + volumeDelta }];
+              }
+            }, []);
+          tradeCVDInitialised = true;
+        } else if (tradeCVDInitialised) {
+          newTrades.forEach((trade: any) => {
+            const latestCVDEntry = tradeCVD[tradeCVD.length - 1];
+            const volumeDelta = trade.side === "B" ? Number(trade.sz) : -Number(trade.sz);
+            if (latestCVDEntry && latestCVDEntry.timeRounded === trade.timeRounded) {
+              tradeCVD[tradeCVD.length - 1].cumulativeVolume += volumeDelta;
+            } else {
+              tradeCVD = [...tradeCVD, { timeRounded: trade.timeRounded, cumulativeVolume: latestCVDEntry ? latestCVDEntry.cumulativeVolume + volumeDelta : volumeDelta }];
+            }
+          });
+        }
+      }
+      if (data.channel === "candle") {
+        const candleIndex = candles.findIndex((candle) => candle.t === data.data.t);
+        if (candleIndex !== -1) {
+          candles[candleIndex] = data.data;
+        } else {
+          candles = [data.data, ...candles];
+        }
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
+
+    priceChart = createChart(candleChartContainer, {
+      width: window.innerWidth,
+      height: 800,
+      layout: {
+        background: { color: "#1E1E1E" },
+        textColor: "#DDD",
+      },
+      grid: {
+        vertLines: { color: "#2B2B2B" },
+        horzLines: { color: "#2B2B2B" },
+      },
+      timeScale: {
+        timeVisible: true,
+      },
+      rightPriceScale: {
+        visible: true,
+      },
+    });
+
+    candleSeries = priceChart.addCandlestickSeries({
+      upColor: "#26a69a",
+      downColor: "#ef5350",
+      borderUpColor: "#26a69a",
+      borderDownColor: "#ef5350",
+      wickUpColor: "#26a69a",
+      wickDownColor: "#ef5350",
+    });
+    cvdSeries = priceChart.addLineSeries({
+      color: "#ffeb3b",
+      priceFormat: {
+        type: "volume",
+      },
+      priceScaleId: "cvd",
+      priceScale: {
+        position: "right",
+        scaleMargins: {
+          top: 0.8,
+          bottom: 0,
+        },
+      },
+    });
+
+    // Handle resize
+    const handleResize = () => {
+      priceChart.resize(window.innerWidth, 800);
+    };
+    window.addEventListener("resize", handleResize);
+
+    return () => window.removeEventListener("resize", handleResize);
+  });
+
+  onDestroy(() => {
+    if (ws) {
+      ws.close();
+    }
+  });
+
+  $effect(() => {
+    const formattedCandles = candles
+      .map((candle) => ({
+        time: new Date(candle.t).getTime() / 1000,
+        open: Number(candle.o),
+        high: Number(candle.h),
+        low: Number(candle.l),
+        close: Number(candle.c),
+      }))
+      .sort((a: any, b: any) => a.time - b.time);
+    candleSeries.setData(formattedCandles);
+    const formattedCVD = tradeCVD.map((item: any) => ({ time: new Date(item.timeRounded).getTime() / 1000, value: Number(item.cumulativeVolume) })).sort((a: any, b: any) => a.time - b.time);
+    cvdSeries.setData(formattedCVD);
+  });
+</script>
+
+<div class="flex flex-col gap-4 items-center grow w-full min-w-full max-w-full">
+  <div class="flex flex-row gap-4 w-full">
+    <div class="w-full" bind:this={candleChartContainer}></div>
+  </div>
+  {#if isLoading}
+    <div class="flex flex-col items-center p-5 justify-center h-full">
+      <div class="spinner"></div>
+      <span>Loading data...</span>
+    </div>
+  {:else}
+    <div class="flex flex-row gap-4 items-center justify-center max-w-screen-sm">
+      <span class="whitespace-nowrap">{sliderStartTimeFormatted}</span>
+      <div class="slider-container">
+        <DoubleRangeSlider bind:start={sliderStartTime} bind:end={sliderEndTime} />
+      </div>
+      <span class="whitespace-nowrap">{sliderEndTimeFormatted}</span>
+      <button
+        class="btn btn-primary"
+        onclick={() => {
+          updateTakerUserBalances();
+        }}>Refresh User Balances</button
+      >
+    </div>
+
+    <div class="flex flex-row gap-4 justify-center">
+      <div class="flex flex-col items-center w-full">
+        <table class="table table-auto">
+          <thead>
+            <tr>
+              <th class="whitespace-nowrap text-center">Large Buyer</th>
+              <th class="whitespace-nowrap text-center">Taker Volume</th>
+              <th class="whitespace-nowrap text-center">Net Volume</th>
+              <th class="whitespace-nowrap text-center">USDC Left</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each aggressiveBuyers.slice(0, 10) as buyer}
+              <tr>
+                <td class="whitespace-nowrap">{shortenHash(buyer[0])} <a class="text-blue-500" href={hypurrscan_url(buyer[0])} target="_blank">[HS]</a> <a class="text-blue-500" href={hyperdash_url(buyer[0])} target="_blank">[HD]</a></td>
+                <td class="whitespace-nowrap text-green-500">{formatNumber(buyer[1].takerVolume.toFixed(0))}</td>
+                <td class="whitespace-nowrap {buyer[1].netVolume > 0 ? 'text-green-500' : 'text-red-500'}">{formatNumber(buyer[1].netVolume.toFixed(0))}</td>
+                <td class="whitespace-nowrap">{userInfo[buyer[0]]?.USDC ? formatNumber(userInfo[buyer[0]].USDC) : formatNumber(0)}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+      <div class="flex flex-col items-center w-full">
+        <table class="table table-auto">
+          <thead>
+            <tr>
+              <th class="whitespace-nowrap">Large Seller</th>
+              <th class="whitespace-nowrap text-center">Taker Volume</th>
+              <th class="whitespace-nowrap text-center">Net Volume</th>
+              <th class="whitespace-nowrap">HYPE Left</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each aggressiveSellers.slice(0, 20) as seller}
+              <tr>
+                <td class="whitespace-nowrap">{shortenHash(seller[0])} <a class="text-blue-500" href={hypurrscan_url(seller[0])} target="_blank">[HS]</a> <a class="text-blue-500" href={hyperdash_url(seller[0])} target="_blank">[HD]</a></td>
+                <td class="whitespace-nowrap text-red-500">{formatNumber(seller[1].takerVolume.toFixed(0))}</td>
+                <td class="whitespace-nowrap {seller[1].netVolume > 0 ? 'text-green-500' : 'text-red-500'}">{formatNumber(seller[1].netVolume.toFixed(0))}</td>
+                <td class="whitespace-nowrap">{userInfo[seller[0]]?.HYPE ? formatNumber(userInfo[seller[0]].HYPE) : formatNumber(0)}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+      <table class="table table-auto">
+        <thead>
+          <tr>
+            <th>Price</th>
+            <th>Size</th>
+            <th>Time</th>
+            <th>Taker</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each trades.slice(0, 20) as trade}
+            <tr>
+              <td>{trade.px}</td>
+              <td class={trade.side === "B" ? "text-green-500" : "text-red-500"}>{trade.sz}</td>
+              <td>{new Date(trade.time).toLocaleTimeString()}</td>
+              <td class="whitespace-nowrap">{shortenHash(trade.users[0])} <a class="text-blue-500" href={hypurrscan_url(trade.users[0])} target="_blank">[HS]</a> <a class="text-blue-500" href={hyperdash_url(trade.users[0])} target="_blank">[HD]</a></td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  {/if}
+</div>
+
+<style>
+  .slider-container {
+    min-width: 600px;
+    max-width: 100%;
+  }
+
+  .spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid #f3f3f3;
+    border-top: 5px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+</style>
