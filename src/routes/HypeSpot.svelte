@@ -5,6 +5,8 @@
 
   let ws: WebSocket;
 
+  const baseUrl = "/apiredirect/api";
+
   let trades: any[] = $state([]);
   let tradesHistorical: any[] = $state([]);
   let tradesWebsocket: any[] = $state([]);
@@ -183,7 +185,7 @@
           console.error("Error fetching candle snapshot:", error);
         });
 
-      fetch("https://188.166.205.84/api/trades", {
+      fetch(baseUrl + "/:api/trades", {
         headers: {
           Accept: "application/json",
         },
