@@ -183,7 +183,7 @@
           console.error("Error fetching candle snapshot:", error);
         });
 
-      fetch("http://167.99.74.137:5000/api/trades", {
+      fetch("https://188.166.205.84/api/trades", {
         headers: {
           Accept: "application/json",
         },
