@@ -19,7 +19,7 @@
 
   let dataStartTime: number = $state(0);
   let dataEndTime: number = $state(0);
-  let sliderStartTime: number = $state(0.8);
+  let sliderStartTime: number = $state(0);
   let sliderEndTime: number = $state(1);
   let selectedStartTime: number = $derived((dataEndTime - dataStartTime) * sliderStartTime + dataStartTime);
   let selectedEndTime: number = $derived((dataEndTime - dataStartTime) * sliderEndTime + dataStartTime);
