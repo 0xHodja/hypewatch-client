@@ -15,7 +15,7 @@ async function getTrades() {
     
     const latestTrades = await trades.find({})
       .sort({ _id: -1 })
-      .limit(50000)
+      .limit(10000)
       .toArray();
     
     return { trades: latestTrades };
