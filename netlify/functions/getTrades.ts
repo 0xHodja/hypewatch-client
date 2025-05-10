@@ -25,23 +25,26 @@ async function getTrades() {
   }
 }
 
-export default async function handler(request, response) {
+export default async function handler(request: Request, context: Context) {
   try {
     const trades = await getTrades();
     if (!trades) {
-      return new Response(null, { status: 204 });
+      return new Response(JSON.stringify({ message: "No trades found" }), {
+        status: 204,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
     return new Response(JSON.stringify(trades), {
+      status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), { 
+    return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });
   }
 }
-
 
 export const config: Config = {
   path: "/api/trades"
