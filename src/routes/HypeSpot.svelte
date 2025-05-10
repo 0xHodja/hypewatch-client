@@ -5,8 +5,6 @@
 
   let ws: WebSocket;
 
-  const baseUrl = "/apiredirect/api";
-
   let trades: any[] = $state([]);
   let tradesHistorical: any[] = $state([]);
   let tradesWebsocket: any[] = $state([]);
@@ -17,14 +15,36 @@
 
   let candles: any[] = $state([]);
 
+  let refreshingUserBalances: boolean = $state(false);
+
   let dataStartTime: number = $state(0);
   let dataEndTime: number = $state(0);
   let sliderStartTime: number = $state(0.8);
   let sliderEndTime: number = $state(1);
   let selectedStartTime: number = $derived((dataEndTime - dataStartTime) * sliderStartTime + dataStartTime);
   let selectedEndTime: number = $derived((dataEndTime - dataStartTime) * sliderEndTime + dataStartTime);
-  let sliderStartTimeFormatted: string = $derived(new Date(selectedStartTime).toLocaleString("en-US", { timeZone: "UTC" }));
-  let sliderEndTimeFormatted: string = $derived(new Date(selectedEndTime).toLocaleString("en-US", { timeZone: "UTC" }));
+  let sliderStartTimeFormatted: string = $derived(
+    new Date(selectedStartTime).toLocaleString("en-GB", {
+      timeZone: "UTC",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+  );
+  let sliderEndTimeFormatted: string = $derived(
+    new Date(selectedEndTime).toLocaleString("en-GB", {
+      timeZone: "UTC",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+  );
 
   let candleChartContainer: HTMLDivElement;
   let priceChart: any;
@@ -134,6 +154,7 @@
     });
     const data = await response.json();
     const balance = data.balances;
+    refreshingUserBalances = false;
     return balance;
   };
 
@@ -185,7 +206,7 @@
           console.error("Error fetching candle snapshot:", error);
         });
 
-      fetch(baseUrl + "/:api/trades", {
+      fetch("/api/trades", {
         headers: {
           Accept: "application/json",
         },
@@ -201,7 +222,7 @@
             timeRounded: Math.floor(trade.time / 60000) * 60000,
             hash: trade.hash,
             tid: trade.tid,
-            users: [trade.user_buyer, trade.user_seller],
+            users: trade.users,
           }));
         });
     };
@@ -374,19 +395,22 @@
       </div>
       <span class="whitespace-nowrap">{sliderEndTimeFormatted}</span>
       <button
-        class="btn btn-primary"
+        class="btn btn-primary border-2 border-gray-600 rounded-md content-center hover:bg-gradient-to-tl hover:from-stone-900 hover:to-orange-600"
+        disabled={refreshingUserBalances}
         onclick={() => {
+          refreshingUserBalances = true;
           updateTakerUserBalances();
         }}>Refresh User Balances</button
       >
     </div>
 
-    <div class="flex flex-row gap-4 justify-center">
-      <div class="flex flex-col items-center w-full">
+    <div class="flex flex-row gap-6 justify-center">
+      <div class="items-center w-full border-2 border-gray-600 rounded-md">
         <table class="table table-auto">
-          <thead>
+          <thead class="sticky top-0 bg-gray-800">
             <tr>
               <th class="whitespace-nowrap text-center">Large Buyer</th>
+              <th class="whitespace-nowrap text-center">Taker Buys</th>
               <th class="whitespace-nowrap text-center">Taker Volume</th>
               <th class="whitespace-nowrap text-center">Net Volume</th>
               <th class="whitespace-nowrap text-center">USDC Left</th>
@@ -396,6 +420,7 @@
             {#each aggressiveBuyers.slice(0, 10) as buyer}
               <tr>
                 <td class="whitespace-nowrap">{shortenHash(buyer[0])} <a class="text-blue-500" href={hypurrscan_url(buyer[0])} target="_blank">[HS]</a> <a class="text-blue-500" href={hyperdash_url(buyer[0])} target="_blank">[HD]</a></td>
+                <td class="whitespace-nowrap">{formatNumber(buyer[1].buys.toFixed(0))}</td>
                 <td class="whitespace-nowrap text-green-500">{formatNumber(buyer[1].takerVolume.toFixed(0))}</td>
                 <td class="whitespace-nowrap {buyer[1].netVolume > 0 ? 'text-green-500' : 'text-red-500'}">{formatNumber(buyer[1].netVolume.toFixed(0))}</td>
                 <td class="whitespace-nowrap">{userInfo[buyer[0]]?.USDC ? formatNumber(userInfo[buyer[0]].USDC) : formatNumber(0)}</td>
@@ -404,11 +429,12 @@
           </tbody>
         </table>
       </div>
-      <div class="flex flex-col items-center w-full">
+      <div class="items-center w-full border-2 border-gray-600 rounded-md">
         <table class="table table-auto">
-          <thead>
+          <thead class="sticky top-0 bg-gray-800">
             <tr>
               <th class="whitespace-nowrap">Large Seller</th>
+              <th class="whitespace-nowrap">Taker Sells</th>
               <th class="whitespace-nowrap text-center">Taker Volume</th>
               <th class="whitespace-nowrap text-center">Net Volume</th>
               <th class="whitespace-nowrap">HYPE Left</th>
@@ -418,6 +444,7 @@
             {#each aggressiveSellers.slice(0, 20) as seller}
               <tr>
                 <td class="whitespace-nowrap">{shortenHash(seller[0])} <a class="text-blue-500" href={hypurrscan_url(seller[0])} target="_blank">[HS]</a> <a class="text-blue-500" href={hyperdash_url(seller[0])} target="_blank">[HD]</a></td>
+                <td class="whitespace-nowrap">{formatNumber(seller[1].sells.toFixed(0))}</td>
                 <td class="whitespace-nowrap text-red-500">{formatNumber(seller[1].takerVolume.toFixed(0))}</td>
                 <td class="whitespace-nowrap {seller[1].netVolume > 0 ? 'text-green-500' : 'text-red-500'}">{formatNumber(seller[1].netVolume.toFixed(0))}</td>
                 <td class="whitespace-nowrap">{userInfo[seller[0]]?.HYPE ? formatNumber(userInfo[seller[0]].HYPE) : formatNumber(0)}</td>
@@ -426,26 +453,28 @@
           </tbody>
         </table>
       </div>
-      <table class="table table-auto">
-        <thead>
-          <tr>
-            <th>Price</th>
-            <th>Size</th>
-            <th>Time</th>
-            <th>Taker</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each trades.slice(0, 20) as trade}
+      <div class="items-center w-full border-2 border-gray-600 rounded-md">
+        <table class="table table-auto w-full">
+          <thead class="sticky top-0 bg-gray-800">
             <tr>
-              <td>{trade.px}</td>
-              <td class={trade.side === "B" ? "text-green-500" : "text-red-500"}>{trade.sz}</td>
-              <td>{new Date(trade.time).toLocaleTimeString()}</td>
-              <td class="whitespace-nowrap">{shortenHash(trade.users[0])} <a class="text-blue-500" href={hypurrscan_url(trade.users[0])} target="_blank">[HS]</a> <a class="text-blue-500" href={hyperdash_url(trade.users[0])} target="_blank">[HD]</a></td>
+              <th class="px-4 py-2">Price</th>
+              <th class="px-4 py-2">Size</th>
+              <th class="px-4 py-2">Time</th>
+              <th class="px-4 py-2">Taker</th>
             </tr>
-          {/each}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {#each trades.slice(0, 10) as trade}
+              <tr>
+                <td class="px-4 py-2">{trade.px}</td>
+                <td class="px-4 py-2 {trade.side === 'B' ? 'text-green-500' : 'text-red-500'}">{trade.sz}</td>
+                <td class="px-4 py-2">{new Date(trade.time).toLocaleTimeString()}</td>
+                <td class="px-4 py-2 whitespace-nowrap">{shortenHash(trade.users[0])} <a class="text-blue-500" href={hypurrscan_url(trade.users[0])} target="_blank">[HS]</a> <a class="text-blue-500" href={hyperdash_url(trade.users[0])} target="_blank">[HD]</a></td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
     </div>
   {/if}
 </div>
