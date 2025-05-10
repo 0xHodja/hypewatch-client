@@ -1,8 +1,10 @@
 import { Config, Context } from "@netlify/functions";
-
-const { MongoClient } = require('mongodb');
+import { MongoClient } from 'mongodb';
 
 const uri = process.env.PROD_MONGODB_URI;
+if (!uri) {
+  throw new Error('MongoDB URI is not defined in environment variables');
+}
 const client = new MongoClient(uri);
 
 async function getTrades() {

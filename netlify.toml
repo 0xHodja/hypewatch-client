@@ -2,6 +2,7 @@
   command = "npm run build"
   publish = ".svelte-kit/netlify"
   functions = "netlify/functions"
+  node_bundler = "esbuild"
 
 [dev]
   command = "npm run dev"
