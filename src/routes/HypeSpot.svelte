@@ -104,7 +104,7 @@
   );
 
   const shortenHash = (hash: string, length: number = 3) => {
-    return hash.slice(0, 3) + "..." + hash.slice(-3);
+    return hash.slice(0, 2 + length) + "..." + hash.slice(-length);
   };
 
   const hypurrscan_url = (hash: string) => {
