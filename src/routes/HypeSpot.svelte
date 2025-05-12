@@ -401,11 +401,7 @@
       },
       priceScaleId: "cvd",
       priceScale: {
-        position: "right",
-        scaleMargins: {
-          top: 0.8,
-          bottom: 0,
-        },
+        position: "left",
       },
     });
 
@@ -593,7 +589,7 @@
                       <th class="px-4 py-2">Price</th>
                       <th class="px-4 py-2">Size</th>
                       <th class="px-4 py-2">Time</th>
-                      <th class="px-4 py-2">Taker</th>
+                      <th class="px-4 py-2">Taker & Maker</th>
                     </tr>
                   </thead>
                   <tbody>
