@@ -3,6 +3,68 @@
   import { createChart } from "lightweight-charts";
   import DoubleRangeSlider from "./DoubleRangeSlider.svelte";
 
+  // modal
+  import { Modal } from "@skeletonlabs/skeleton-svelte";
+
+  let openState = $state(false);
+
+  const modalClose = () => {
+    openState = false;
+  };
+
+  const modalOpen = (user: string) => {
+    modalUser = user;
+    fetchUserInfo();
+    openState = true;
+    loadingModalUser = true;
+  };
+
+  let modalUser = $state("");
+  let loadingModalUser = $state(false);
+
+  let modalUserAccountInfo = $state({
+    perps: null,
+    spot: null,
+  });
+
+  const fetchUserInfo = async () => {
+    try {
+      const response = await fetch(`https://api.hyperliquid.xyz/info`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "clearinghouseState",
+          user: modalUser,
+        }),
+      });
+      const data = await response.json();
+      modalUserAccountInfo["perps"] = data.assetPositions.filter((position: any) => position.position.coin == "HYPE");
+      loadingModalUser = false;
+      console.log(modalUserAccountInfo);
+    } catch (error) {
+      console.error("Error fetching user perps info:", error);
+    }
+    try {
+      const response = await fetch(`https://api.hyperliquid.xyz/info`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "spotClearinghouseState",
+          user: modalUser,
+        }),
+      });
+      const data = await response.json();
+      modalUserAccountInfo["spot"] = data.balances.filter((balance: any) => balance.coin == "HYPE" || balance.coin == "USDC");
+    } catch (error) {
+      console.error("Error fetching user spot info:", error);
+    }
+  };
+
+  // app
   let ws: WebSocket;
 
   let trades: any[] = $state([]);
@@ -394,18 +456,20 @@
         <DoubleRangeSlider bind:start={sliderStartTime} bind:end={sliderEndTime} />
       </div>
       <span class="whitespace-nowrap">{sliderEndTimeFormatted}</span>
+    </div>
+    <div class="flex flex-row gap-6 justify-center flex-wrap">
       <button
         class="btn btn-primary border-2 border-gray-600 rounded-md content-center hover:bg-gradient-to-tl hover:from-stone-900 hover:to-orange-600"
         disabled={refreshingUserBalances}
         onclick={() => {
           refreshingUserBalances = true;
           updateTakerUserBalances();
-        }}>Refresh User Balances</button
+        }}>{refreshingUserBalances ? "Refreshing..." : "Refresh USDC/HYPE Balances"}</button
       >
     </div>
 
-    <div class="flex flex-row gap-6 justify-center">
-      <div class="items-center w-full border-2 border-gray-600 rounded-md">
+    <div class="flex flex-row gap-6 justify-center flex-wrap">
+      <div class="items-center border-2 border-gray-600 rounded-md">
         <table class="table table-auto">
           <thead class="sticky top-0 bg-gray-800">
             <tr>
@@ -419,17 +483,19 @@
           <tbody>
             {#each aggressiveBuyers.slice(0, 10) as buyer}
               <tr>
-                <td class="whitespace-nowrap">{shortenHash(buyer[0])} <a class="text-blue-500" href={hypurrscan_url(buyer[0])} target="_blank">[HS]</a> <a class="text-blue-500" href={hyperdash_url(buyer[0])} target="_blank">[HD]</a></td>
-                <td class="whitespace-nowrap">{formatNumber(buyer[1].buys.toFixed(0))}</td>
-                <td class="whitespace-nowrap text-green-500">{formatNumber(buyer[1].takerVolume.toFixed(0))}</td>
-                <td class="whitespace-nowrap {buyer[1].netVolume > 0 ? 'text-green-500' : 'text-red-500'}">{formatNumber(buyer[1].netVolume.toFixed(0))}</td>
+                <td class="whitespace-nowrap">
+                  <span class="cursor-pointer text-blue-500 hover:text-blue-700" onclick={() => modalOpen(buyer[0])}>{shortenHash(buyer[0])}</span>
+                  <a class="text-blue-500 hover:text-blue-700" href={hypurrscan_url(buyer[0])} target="_blank">[HS]</a> <a class="text-blue-500 hover:text-blue-700" href={hyperdash_url(buyer[0])} target="_blank">[HD]</a>
+                </td><td class="whitespace-nowrap">{formatNumber(buyer[1].buys.toFixed(0))}</td>
+                <td class="whitespace-nowrap {buyer[1].takerVolume >= 0 ? 'text-green-500' : 'text-red-500'}">{formatNumber(buyer[1].takerVolume.toFixed(0))}</td>
+                <td class="whitespace-nowrap {buyer[1].netVolume >= 0 ? 'text-green-500' : 'text-red-500'}">{formatNumber(buyer[1].netVolume.toFixed(0))}</td>
                 <td class="whitespace-nowrap">{userInfo[buyer[0]]?.USDC ? formatNumber(userInfo[buyer[0]].USDC) : formatNumber(0)}</td>
               </tr>
             {/each}
           </tbody>
         </table>
       </div>
-      <div class="items-center w-full border-2 border-gray-600 rounded-md">
+      <div class="items-center border-2 border-gray-600 rounded-md">
         <table class="table table-auto">
           <thead class="sticky top-0 bg-gray-800">
             <tr>
@@ -441,20 +507,23 @@
             </tr>
           </thead>
           <tbody>
-            {#each aggressiveSellers.slice(0, 20) as seller}
+            {#each aggressiveSellers.slice(0, 10) as seller}
               <tr>
-                <td class="whitespace-nowrap">{shortenHash(seller[0])} <a class="text-blue-500" href={hypurrscan_url(seller[0])} target="_blank">[HS]</a> <a class="text-blue-500" href={hyperdash_url(seller[0])} target="_blank">[HD]</a></td>
+                <td class="whitespace-nowrap">
+                  <span class="cursor-pointer text-blue-500 hover:text-blue-700" onclick={() => modalOpen(seller[0])}>{shortenHash(seller[0])}</span>
+                  <a class="text-blue-500 hover:text-blue-700" href={hypurrscan_url(seller[0])} target="_blank">[HS]</a> <a class="text-blue-500 hover:text-blue-700" href={hyperdash_url(seller[0])} target="_blank">[HD]</a>
+                </td>
                 <td class="whitespace-nowrap">{formatNumber(seller[1].sells.toFixed(0))}</td>
-                <td class="whitespace-nowrap text-red-500">{formatNumber(seller[1].takerVolume.toFixed(0))}</td>
-                <td class="whitespace-nowrap {seller[1].netVolume > 0 ? 'text-green-500' : 'text-red-500'}">{formatNumber(seller[1].netVolume.toFixed(0))}</td>
+                <td class="whitespace-nowrap {seller[1].takerVolume < 0 ? 'text-red-500' : 'text-green-500'}">{formatNumber(seller[1].takerVolume.toFixed(0))}</td>
+                <td class="whitespace-nowrap {seller[1].netVolume >= 0 ? 'text-green-500' : 'text-red-500'}">{formatNumber(seller[1].netVolume.toFixed(0))}</td>
                 <td class="whitespace-nowrap">{userInfo[seller[0]]?.HYPE ? formatNumber(userInfo[seller[0]].HYPE) : formatNumber(0)}</td>
               </tr>
             {/each}
           </tbody>
         </table>
       </div>
-      <div class="items-center w-full border-2 border-gray-600 rounded-md">
-        <table class="table table-auto w-full">
+      <div class="items-center border-2 border-gray-600 rounded-md" style="height: 500px; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none;">
+        <table class="table table-auto">
           <thead class="sticky top-0 bg-gray-800">
             <tr>
               <th class="px-4 py-2">Price</th>
@@ -464,24 +533,59 @@
             </tr>
           </thead>
           <tbody>
-            {#each trades.slice(0, 10) as trade}
+            {#each trades.slice(0, 40) as trade}
               <tr>
                 <td class="px-4 py-2">{trade.px}</td>
                 <td class="px-4 py-2 {trade.side === 'B' ? 'text-green-500' : 'text-red-500'}">{trade.sz}</td>
                 <td class="px-4 py-2">{new Date(trade.time).toLocaleTimeString()}</td>
-                <td class="px-4 py-2 whitespace-nowrap">{shortenHash(trade.users[0])} <a class="text-blue-500" href={hypurrscan_url(trade.users[0])} target="_blank">[HS]</a> <a class="text-blue-500" href={hyperdash_url(trade.users[0])} target="_blank">[HD]</a></td>
+                <td class="px-4 py-2 whitespace-nowrap">
+                  <span class="cursor-pointer text-blue-500 hover:text-blue-700" onclick={() => modalOpen(trade.users[0])}>{shortenHash(trade.users[0])}</span>
+                  <a class="text-blue-500 hover:text-blue-700" href={hypurrscan_url(trade.users[0])} target="_blank">[HS]</a> <a class="text-blue-500 hover:text-blue-700" href={hyperdash_url(trade.users[0])} target="_blank">[HD]</a>
+                </td>
               </tr>
             {/each}
           </tbody>
         </table>
       </div>
+      <Modal open={openState} onOpenChange={(e) => (openState = e.open)} contentBase="card bg-surface-100-900 p-4 space-y-4 shadow-xl max-w-screen-sm" backdropClasses="backdrop-blur-sm">
+        {#snippet content()}
+          <header class="flex justify-between">
+            <h5 class="h5">Account: {modalUser}</h5>
+          </header>
+          <article>
+            {#if loadingModalUser}
+              <p class="opacity-60">Loading...</p>
+            {:else}
+              <h5 class="h5">Perps (HYPE only)</h5>
+              <p class="opacity-100">
+                {#if modalUserAccountInfo.perps.length > 0}
+                  {#each modalUserAccountInfo.perps as position}
+                    <p class="opacity-60">{position.position.coin}: Size: {Number(position.position.szi).toFixed(0)} | Entry: {position.position.entryPx} | PnL: {position.position.unrealizedPnl} | LiqPrice: {position.position.liquidationPx}</p>
+                  {/each}
+                {:else}
+                  <p class="opacity-60">No positions</p>
+                {/if}
+              </p>
+              <h5 class="h5">Spot (HYPE and USDC)</h5>
+              <p class="opacity-100">
+                {#each modalUserAccountInfo?.spot ?? [] as coin}
+                  <p class="opacity-60">{coin.coin}: {Number(coin.total).toFixed(0)}</p>
+                {/each}
+              </p>
+            {/if}
+          </article>
+          <footer class="flex justify-end gap-4">
+            <button type="button" class="btn preset-filled" onclick={modalClose}>Alright Buddy</button>
+          </footer>
+        {/snippet}
+      </Modal>
     </div>
   {/if}
 </div>
 
 <style>
   .slider-container {
-    min-width: 600px;
+    min-width: 400px;
     max-width: 100%;
   }
 
