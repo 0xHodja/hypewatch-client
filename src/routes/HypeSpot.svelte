@@ -466,6 +466,17 @@
           updateTakerUserBalances();
         }}>{refreshingUserBalances ? "Refreshing..." : "Refresh USDC/HYPE Balances"}</button
       >
+      <button
+        class="btn btn-primary border-2 border-gray-600 rounded-md content-center hover:bg-gradient-to-tl hover:from-stone-900 hover:to-orange-600"
+        onclick={() => {
+          try {
+            sliderStartTime = Math.max(1 - (60 * 1000 * 30) / (dataEndTime - dataStartTime), 0);
+            sliderEndTime = 1;
+          } catch (error) {
+            console.error("Error setting slider times:", error);
+          }
+        }}>Show Last 30 minutes</button
+      >
     </div>
 
     <div class="flex flex-row gap-6 justify-center flex-wrap">
