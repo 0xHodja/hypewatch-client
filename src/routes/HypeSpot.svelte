@@ -466,12 +466,12 @@
         class="btn btn-primary border-2 border-gray-600 rounded-md content-center hover:bg-gradient-to-tl hover:from-stone-900 hover:to-orange-600"
         onclick={() => {
           try {
-            sliderStartTime = Math.max(1 - (60 * 1000 * 30) / (dataEndTime - dataStartTime), 0);
+            sliderStartTime = Math.max(1 - (60 * 1000 * 10) / (dataEndTime - dataStartTime), 0);
             sliderEndTime = 1;
           } catch (error) {
             console.error("Error setting slider times:", error);
           }
-        }}>Show Last 30 minutes</button
+        }}>Show Last 10 minutes</button
       >
     </div>
 
@@ -570,7 +570,7 @@
                     <p class="opacity-60">{position.position.coin}: Size: {Number(position.position.szi).toFixed(0)} | Entry: {position.position.entryPx} | PnL: {position.position.unrealizedPnl} | LiqPrice: {position.position.liquidationPx}</p>
                   {/each}
                 {:else}
-                  <p class="opacity-60">No positions</p>
+                  <p class="opacity-60">No HYPE-USD positions</p>
                 {/if}
               </p>
               <h5 class="h5">Spot (HYPE and USDC)</h5>
@@ -589,7 +589,7 @@
                       <th class="px-4 py-2">Price</th>
                       <th class="px-4 py-2">Size</th>
                       <th class="px-4 py-2">Time</th>
-                      <th class="px-4 py-2">Taker & Maker</th>
+                      <th class="px-4 py-2">Buyer</th>
                     </tr>
                   </thead>
                   <tbody>
