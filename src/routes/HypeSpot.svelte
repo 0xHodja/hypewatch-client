@@ -572,6 +572,34 @@
                   <p class="opacity-60">{coin.coin}: {Number(coin.total).toFixed(0)}</p>
                 {/each}
               </p>
+
+              <h5 class="h5">Latest Trades</h5>
+
+              <div class="items-center border-2 border-gray-600 rounded-md" style="height: 300px; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none;">
+                <table class="table table-auto">
+                  <thead class="sticky top-0 bg-gray-800">
+                    <tr>
+                      <th class="px-4 py-2">Price</th>
+                      <th class="px-4 py-2">Size</th>
+                      <th class="px-4 py-2">Time</th>
+                      <th class="px-4 py-2">Taker</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each trades.filter((trade) => trade.users[0] === modalUser || trade.users[1] === modalUser) as trade}
+                      <tr>
+                        <td class="px-4 py-2">{trade.px}</td>
+                        <td class="px-4 py-2 {trade.side === 'B' ? 'text-green-500' : 'text-red-500'}">{trade.sz}</td>
+                        <td class="px-4 py-2">{new Date(trade.time).toLocaleTimeString()}</td>
+                        <td class="px-4 py-2 whitespace-nowrap">
+                          <span class="cursor-pointer text-blue-500 hover:text-blue-700" onclick={() => modalOpen(trade.users[0])}>{shortenHash(trade.users[0])}</span>
+                          <a class="text-blue-500 hover:text-blue-700" href={hypurrscan_url(trade.users[0])} target="_blank">[HS]</a> <a class="text-blue-500 hover:text-blue-700" href={hyperdash_url(trade.users[0])} target="_blank">[HD]</a>
+                        </td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
             {/if}
           </article>
           <footer class="flex justify-end gap-4">
@@ -581,6 +609,9 @@
       </Modal>
     </div>
   {/if}
+  <div class="flex flex-row gap-4">
+    <span>Yellow line is the cumulative volume of the previous ~10,000 trades | Use the slider to filter the trades by time</span>
+  </div>
 </div>
 
 <style>
