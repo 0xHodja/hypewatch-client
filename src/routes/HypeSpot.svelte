@@ -558,6 +558,7 @@
         {#snippet content()}
           <header class="flex justify-between">
             <h5 class="h5">Account: {modalUser}</h5>
+            <a href={hypurrscan_url(modalUser)} target="_blank" class="text-blue-500 hover:text-blue-700">[Hyperscan]</a> <a href={hyperdash_url(modalUser)} target="_blank" class="text-blue-500 hover:text-blue-700">[Hyperdash]</a>
           </header>
           <article>
             {#if loadingModalUser}
