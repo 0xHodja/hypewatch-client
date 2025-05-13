@@ -618,7 +618,7 @@
     </div>
   {/if}
   <div class="flex flex-row gap-4">
-    <span>Yellow line is the cumulative volume of the previous ~10,000 trades | Use the slider to filter the trades by time</span>
+    <span>Yellow line is the cumulative volume delta of the previous ~10,000 trades | Use the slider to filter the trades by time</span>
   </div>
 </div>
 
